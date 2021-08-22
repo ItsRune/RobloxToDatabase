@@ -9,20 +9,36 @@ const Database = require("@replit/database");
 
 const localDB = new Database();
 
-localDB.set("1", "123456").then(() => {
-  console.log('added user 1 with 123456')
-});
-
-Router.post('/request/verify', async (req, res) => {
+Router.post('/verify/getkey', async (req, res) => {
   try {
     const Body = req.body;
 
-    if ((Body.verifykey == undefined) || (Body.user == undefined || !Number(Body.user)) || (Body.discordid == undefined || !Number(Body.discordid))) {
+    if ((Body.user == undefined || !Number(Body.user)) || (Body.discordid == undefined || !Number(Body.discordid))) {
       return res.json({Success:false, error:"Request resulted in an error, please double check the parameters!"});
     }
 
-    const pendingKey = await localDB.get(String(Body.user));
-    if (pendingKey != Body.verifykey) {
+    const key = keyGenerator();
+    const packedData = {key, discordId: Body.discordid};
+
+    localDB.set(String(Body.user), packedData).then(() => {
+      res.json({Success:true, key});
+    });
+  } catch(err) {
+    error(err.message);
+    res.json({Success:false, error:"Service is unresponsive!"});
+  }
+});
+
+Router.post('/verify', async (req, res) => {
+  try {
+    const Body = req.body;
+
+    if ((Body.verifykey == undefined) || (Body.user == undefined || !Number(Body.user))) {
+      return res.json({Success:false, error:"Request resulted in an error, please double check the parameters!"});
+    }
+
+    const pendingData = await localDB.get(String(Body.user));
+    if (pendingData.key != Body.verifykey) {
       res.json({Success:false, error:"Invalid verification key."});
       await localDB.delete(String(Body.user));
       return;
@@ -34,7 +50,7 @@ Router.post('/request/verify', async (req, res) => {
     } else {
       VerifyModel.create({
         UserId: Number(Body.user),
-        DiscordId: String(Body.discordid)
+        DiscordId: String(pendingData.discordId)
       }, (err, data) => {
         if (err) {
           error(err.message);
